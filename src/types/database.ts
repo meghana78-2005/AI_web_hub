@@ -5,12 +5,13 @@ export interface Tool {
   url: string;
   pricing: string;
   view_count: number;
-  slug: string;
-  category_id: string;
+  slug?: string;
+  category_slug?: string;
   image_url?: string;
-  created_at?: string;
   is_trending?: boolean;
   use_cases?: string[];
+  rating?: number;
+  tags?: string[];
 }
 
 export interface Category {

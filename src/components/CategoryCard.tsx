@@ -7,7 +7,7 @@ interface CategoryCardProps {
 }
 
 export function CategoryCard({ category, onClick }: CategoryCardProps) {
-  const IconComponent = (Icons as any)[category.icon] || Icons.Folder;
+  const IconComponent = (Icons[category.icon as keyof typeof Icons] as React.ElementType) || Icons.Folder;
 
   return (
     <button

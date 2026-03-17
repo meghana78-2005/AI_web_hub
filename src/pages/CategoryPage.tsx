@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Category, Tool } from '../types/database';
-import { supabase } from '../lib/supabase';
+import { LOCAL_TOOLS, LOCAL_CATEGORIES } from '../lib/localData';
 import { ToolCard } from '../components/ToolCard';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Bot } from 'lucide-react';
 import * as Icons from 'lucide-react';
 
 interface CategoryPageProps {
   categorySlug: string;
   onToolClick: (slug: string) => void;
   onBack: () => void;
+  onCompareToggle: (tool: Tool) => void;
+  selectedToolIds: string[];
 }
 
 export function CategoryPage({
   categorySlug,
   onToolClick,
   onBack,
+  onCompareToggle,
+  selectedToolIds
 }: CategoryPageProps) {
   const [category, setCategory] = useState<Category | null>(null);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -22,34 +26,15 @@ export function CategoryPage({
   const [selectedPricing, setSelectedPricing] = useState<string>('all');
 
   useEffect(() => {
-    loadCategoryData();
-  }, [categorySlug]);
-
-  const loadCategoryData = async () => {
-    try {
-      const categoryRes = await supabase
-        .from('categories')
-        .select('*')
-        .eq('slug', categorySlug)
-        .maybeSingle();
-
-      if (categoryRes.data) {
-        setCategory(categoryRes.data);
-
-        const toolsRes = await supabase
-          .from('tools')
-          .select('*')
-          .eq('category_id', categoryRes.data.id)
-          .order('view_count', { ascending: false });
-
-        if (toolsRes.data) setTools(toolsRes.data);
-      }
-    } catch (error) {
-      console.error('Error loading category:', error);
-    } finally {
-      setLoading(false);
+    // Load from local data
+    const foundCategory = LOCAL_CATEGORIES.find(c => c.slug === categorySlug);
+    if (foundCategory) {
+      setCategory(foundCategory);
+      const categoryTools = LOCAL_TOOLS.filter(t => t.category_slug === categorySlug);
+      setTools(categoryTools);
     }
-  };
+    setLoading(false);
+  }, [categorySlug]);
 
   const filteredTools =
     selectedPricing === 'all'
@@ -80,7 +65,7 @@ export function CategoryPage({
     );
   }
 
-  const IconComponent = (Icons as any)[category.icon] || Icons.Folder;
+  const IconComponent = (Icons[category.icon as keyof typeof Icons] as React.ElementType) || Icons.Folder;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -131,15 +116,21 @@ export function CategoryPage({
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredTools.map((tool) => (
-          <ToolCard key={tool.id} tool={tool} onClick={onToolClick} />
+          <ToolCard 
+            key={tool.id} 
+            tool={tool} 
+            onClick={onToolClick}
+            isSelectedForComparison={selectedToolIds.includes(tool.id)}
+            onCompareToggle={() => onCompareToggle(tool)}
+          />
         ))}
       </div>
 
       {filteredTools.length === 0 && (
-        <div className="text-center py-16">
-          <p className="text-gray-600 dark:text-gray-400">
-            No tools found with the selected filters.
-          </p>
+        <div className="text-center py-20 bg-gray-50 dark:bg-gray-800/50 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700">
+          <Bot className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+          <p className="text-xl font-bold text-gray-900 dark:text-white mb-2">No tools found</p>
+          <p className="text-gray-600 dark:text-gray-400">Try changing your filters or check other categories.</p>
         </div>
       )}
     </div>

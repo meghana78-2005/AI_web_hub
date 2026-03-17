@@ -1,7 +1,38 @@
 import { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Bot, Sparkles, Mic, MicOff } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import { LOCAL_TOOLS } from '../lib/localData';
+
+// Typing for SpeechRecognition
+interface SpeechRecognitionEvent extends Event {
+  results: {
+    [key: number]: {
+      [key: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface SpeechRecognition extends EventTarget {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  stop: () => void;
+  onstart: () => void;
+  onend: () => void;
+  onerror: () => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+}
+
+interface WindowWithSpeech extends Window {
+  SpeechRecognition?: {
+    new (): SpeechRecognition;
+  };
+  webkitSpeechRecognition?: {
+    new (): SpeechRecognition;
+  };
+}
 
 interface Message {
   id: string;
@@ -168,7 +199,7 @@ export function Chatbot() {
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -180,7 +211,8 @@ export function Chatbot() {
 
   // Voice recognition setup
   const toggleVoice = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const win = window as unknown as WindowWithSpeech;
+    const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert('Voice input is not supported in your browser. Try Chrome!');
       return;
@@ -201,7 +233,7 @@ export function Chatbot() {
     recognition.onend = () => setIsListening(false);
     recognition.onerror = () => setIsListening(false);
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
       // Auto-send after voice input
@@ -236,23 +268,25 @@ export function Chatbot() {
         if (keywords.length === 0) {
           botResponse = "Hmm, I didn't quite catch that! 🤔 Try asking:\n\n• 'Find me a video editor'\n• 'How do I use ChatGPT?'\n• 'What free tools do you have?'\n• Or just say hi! 👋";
         } else {
-          const orFilters = keywords.flatMap(kw => [`name.ilike.%${kw}%`, `description.ilike.%${kw}%`]).join(',');
           try {
-            let matchingTools = LOCAL_TOOLS.filter(t =>
-              keywords.some(kw => t.name.toLowerCase().includes(kw) || t.description.toLowerCase().includes(kw) || t.category_slug.includes(kw))
+            const matchingTools = LOCAL_TOOLS.filter(t =>
+              keywords.some(kw => 
+                t.name.toLowerCase().includes(kw) || 
+                t.description.toLowerCase().includes(kw) || 
+                (t.category_slug && t.category_slug.toLowerCase().includes(kw)) ||
+                (t.tags && t.tags.some((tag: string) => tag.toLowerCase().includes(kw))) ||
+                (t.use_cases && t.use_cases.some((uc: string) => uc.toLowerCase().includes(kw)))
+              )
             );
-            if (matchingTools.length === 0) {
-              const { data } = await supabase.from('tools').select('*').or(orFilters);
-              if (data) matchingTools = data as any;
-            }
+            
             if (matchingTools.length > 0) {
               const list = matchingTools.slice(0, 6).map(t => `• **${t.name}** (${t.pricing})`).join('\n');
               botResponse = `I found ${matchingTools.length} tool${matchingTools.length > 1 ? 's' : ''} for you:\n\n${list}\n\nAsk me **'How do I use [tool name]?'** and I'll walk you through any of them! 🔍`;
             } else {
               botResponse = "I couldn't find a tool for that specific request. 😕\n\nTry asking: 'show me video editors' or 'writing tools'. Or ask 'How do I use ChatGPT?' for a usage guide!";
             }
-          } catch (e) {
-            botResponse = "I'm having trouble right now. 🔧 Please try again or use the search bar above!";
+          } catch {
+            botResponse = "I'm having trouble searching our tools right now. 🔧 Please try again or use the search bar above!";
           }
         }
       }
